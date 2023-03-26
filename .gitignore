@@ -1,4 +1,9 @@
 .*
 !.gitignore
+!.pre-commit-config.yaml
 
-data
+data/*
+
+!*.keep
+
+*.lock
