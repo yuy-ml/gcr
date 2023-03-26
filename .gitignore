@@ -1,4 +1,6 @@
 .*
 !.gitignore
 
-data
+data/*
+
+!*.keep
