@@ -2,8 +2,11 @@
 !.gitignore
 !.pre-commit-config.yaml
 
+__pycache__
+
 data/*
 
 !*.keep
 
 *.lock
+
