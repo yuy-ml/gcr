@@ -23,7 +23,8 @@ def plot_csv(filepath, **kwargs):
 def save_state(model, opt, epoch, losses, best_loss):
   
   os.makedirs('checkpoint', exist_ok=True)
-  pd.DataFrame(losses).to_csv('checkpoint/train_progress.csv', index_label='id', index=False)
+  pd.DataFrame(losses).to_csv('checkpoint/train_progress.csv', index_label='id', 
+                              index=False)
   
   state = model.state_dict()
   state['epoch'] = epoch
