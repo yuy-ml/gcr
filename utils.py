@@ -28,7 +28,7 @@ def plot_csv(filepath: str, **kwargs) -> None:
 def save_state(model: Module, opt: Optimizer, epoch: int,
                losses: Dict, best_loss: int, best_acc: float, path: str) -> None:
   
-  os.makedirs('checkpoint', exist_ok=True)
+  os.makedirs(path, exist_ok=True)
   pd.DataFrame(losses).to_csv(f'{path}/train_progress.csv', index=False)
   
   state = model.state_dict()
@@ -87,12 +87,12 @@ class LogWriter:
     
     
   def add(self, train_progress: Dict, **dict):
-    self.__add_tensorboard_record__()
+    self.__add_tensorboard_record__(**dict)
     
     for k, w in dict.items(): 
       if k not in train_progress:
         train_progress.update({k : []})
-    train_progress[k].append(w)
+      train_progress[k].append(w)
 
 class DecayingCosineAnnealingLR(CosineAnnealingLR):
   def get_lr(self) -> float:
