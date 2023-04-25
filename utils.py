@@ -72,7 +72,7 @@ def restore_state(nn: Module, opt: Optimizer, path: str) -> Tuple[Module,
     print(f"Couldn't load checkpoint: {e}")
     return nn, opt, -1, 1e18, 0, 1e18, 0, {}
   
-class LogWriter:
+class Logger:
   def __init__(self, run: str) -> None:
     self.writer = SummaryWriter(run)
   
