@@ -7,7 +7,6 @@ import librosa
 import numpy as np
 
 from tqdm import tqdm
-from tempfile import mkdtemp, gettempdir
 from itertools import islice
 from dataclasses import dataclass
 
@@ -15,11 +14,38 @@ from torch.utils.data import Dataset
 
 from utils import label2vec
 
-def get_audio_by_id(base_folder, id, sr=22050):
+def get_audio_by_id(base_folder: str, id: int, sr=22050):
   id = f'{id:06}'
   subfolder = id[:3]
   filename = f'{base_folder}/{subfolder}/{id}.mp3'
   return librosa.load(filename, sr=sr)[0]
+
+
+def retrieve_image(audio, n_fft, sr, win_length, hop_length, fmin, fmax):
+  
+  audio = np.pad(audio, (0, max(sr * 31 - audio.shape[0], 0)))
+  spec = librosa.power_to_db(
+      librosa.feature.melspectrogram(y=audio, sr=sr, n_fft=n_fft,
+                                     hop_length=hop_length, 
+                                     win_length=win_length))
+  
+  fig = plt.figure(frameon=False)
+  ax = fig.add_subplot(111)
+  ax.set_position([0, 0, 1, 1])
+  plt.axis('off')
+  plt.subplots_adjust(left=0, right=1, top=1, bottom=0)
+  fig.patch.set_alpha(0)
+  
+  librosa.display.specshow(spec, ax=ax, n_fft=n_fft, hop_length=hop_length,
+                            win_length=win_length, fmin=fmin, fmax=fmax,
+                            sr=sr)
+  fig.canvas.draw()
+  rgba_buf = fig.canvas.buffer_rgba()
+  (w,h) = fig.canvas.get_width_height()
+  rgba_arr = np.frombuffer(rgba_buf, dtype=np.uint8).reshape((h, w, 4))[:, :, :3]
+  plt.close()
+  
+  return rgba_arr / 255
 
 @dataclass
 class AudioDataset(Dataset):
@@ -37,27 +63,6 @@ class AudioDataset(Dataset):
   y = None
   dtemp = ".cache"
   progress_path = None
-  
-  def retrieve_image(self, spec):
-    fig = plt.figure(frameon=False)
-    ax = fig.add_subplot(111)
-    ax.set_position([0, 0, 1, 1])
-    plt.axis('off')
-    plt.subplots_adjust(left=0, right=1, top=1, bottom=0)
-    fig.patch.set_alpha(0)
-    
-    librosa.display.specshow(spec, ax=ax, n_fft=self.n_fft,
-                             hop_length=self.hop_length,
-                             win_length=self.win_length,
-                             fmin=self.fmin, fmax=self.fmax,
-                             sr=self.sr)
-    fig.canvas.draw()
-    rgba_buf = fig.canvas.buffer_rgba()
-    (w,h) = fig.canvas.get_width_height()
-    rgba_arr = np.frombuffer(rgba_buf, dtype=np.uint8).reshape((h, w, 4))[:, :, :3]
-    plt.close()
-    
-    return rgba_arr / 255
   
   def __restore_state__(self):
     try:
@@ -114,16 +119,13 @@ class AudioDataset(Dataset):
         self.y[i] = np.zeros(8)
         i += 1
         continue
-      audio = np.pad(audio, (0, max(self.sr * 31 - audio.shape[0], 0)))
-      spec = librosa.power_to_db(
-        librosa.feature.melspectrogram(y=audio, 
-                                       n_fft=self.n_fft,
-                                       hop_length=self.hop_length,
-                                       win_length=self.win_length,
-                                       fmin=self.fmin, fmax=self.fmax,
-                                       sr=self.sr))
       
-      image = self.retrieve_image(spec)
+      image = retrieve_image(audio, n_fft=self.n_fft,
+                                    win_length=self.win_length,
+                                    sr=self.sr,
+                                    hop_length=self.hop_length,
+                                    fmin=self.fmin,
+                                    fmax=self.fmax)
       self.x[i] = image
       self.y[i] = label2vec(8)(int(row['track_genres']))
       i += 1

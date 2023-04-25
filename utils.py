@@ -2,75 +2,105 @@ import numpy as np
 import pandas as pd
 import seaborn as sns
 import torch
+from torch.nn import Module
+from torch.optim import Optimizer
 import os
 import matplotlib.pyplot as plt
+
+from typing import Tuple, Dict
 
 from torch.optim.lr_scheduler import CosineAnnealingLR
 from torch.utils.tensorboard import SummaryWriter
 
-def label2vec(n_classes):
+
+def label2vec(n_classes: int) -> int:
   def inner(label):  
     v = np.zeros(n_classes)
     v[label] = 1
     return v
   return inner
 
-def plot_csv(filepath, **kwargs):
+def plot_csv(filepath: str, **kwargs) -> None:
   df = pd.read_csv(filepath)
   sns.lineplot(data=df, **kwargs)
   plt.show()
   
-def save_state(model, opt, epoch, losses, best_loss):
+def save_state(model: Module, opt: Optimizer, epoch: int,
+               losses: Dict, loss: float, acc: float, best_loss: float,
+               best_acc: float, path: str) -> None:
   
-  os.makedirs('checkpoint', exist_ok=True)
-  pd.DataFrame(losses).to_csv('checkpoint/train_progress.csv', index_label='id', 
-                              index=False)
+  os.makedirs(path, exist_ok=True)
+  pd.DataFrame(losses).to_csv(f'{path}/train_progress.csv', index=False)
   
-  state = model.state_dict()
-  state['epoch'] = epoch
-  state['best_loss'] = best_loss
+  torch.save({
+    'epoch': epoch,
+    'model_state_dict': model.state_dict(),
+    'optimizer_state_dict': opt.state_dict(),
+    'loss': loss,
+    'acc' : acc,
+    'best_loss' : best_loss,
+    'best_acc' : best_acc
+    }, f'{path}/checkpoint.pt')
   
-  torch.save(opt.state_dict(), 'checkpoint/optimizer.pt')
-  torch.save(state, 'checkpoint/model.pt')
+def restore_state(nn: Module, opt: Optimizer, path: str) -> Tuple[Module,
+                                                                  Optimizer,
+                                                                  int,
+                                                                  float,
+                                                                  float,
+                                                                  float,
+                                                                  float,
+                                                                  Dict[str, list]]:
   
-def restore_state(model, opt, path):
   try:
-    dict = torch.load(f"{path}/model.pt")
-    opt.load_state_dict(torch.load(f"{path}/optimizer.pt"))
-    model.load_state_dict(dict, strict=False)
-    train_process = pd.read_csv('checkpoint/train_progress.csv').to_dict('list')
-    return model, opt, dict['epoch'], dict['best_loss'], train_process
+    checkpoint = torch.load(f'{path}/checkpoint.pt')
+    
+    opt.load_state_dict(checkpoint['optimizer_state_dict'])
+    nn.load_state_dict(checkpoint['model_state_dict'], strict=False)
+    
+    train_process = pd.read_csv(f'{path}/train_progress.csv').to_dict('list')
+    epoch = checkpoint['epoch']
+    loss = checkpoint['loss']
+    acc = checkpoint['acc']
+    best_loss = checkpoint['best_loss']
+    best_acc = checkpoint['best_acc']
+    
+    print(f"Successfully loaded checkpoint: {best_loss} loss, {best_acc} acc")
+    
+    return nn, opt, epoch, loss, acc, best_loss, best_acc, train_process
+  
   except FileNotFoundError as e:
     print(f"Couldn't load checkpoint: {e}")
-    return model, opt, -1, 1e18, {}
+    return nn, opt, -1, 1e18, 0, 1e18, 0, {}
   
-def init_tensorboard_writer(writer):
-  layout = {
-    "Performance": {
-        "loss": ["Multiline", ["loss/train", "loss/val"]],
-        "acc": ["Multiline", ["acc/train", "acc/val"]],
-    },
-  }
+class Logger:
+  def __init__(self, run: str) -> None:
+    self.writer = SummaryWriter(run)
   
-  writer.add_custom_scalars(layout)
-  
-  return writer
-  
-def add_tensorboard_record(writer, epoch, **dict):
-
-  writer.add_scalar('loss/train', dict['val_loss'], epoch)
-  writer.add_scalar('loss/val', dict['val_loss'], epoch)
-  writer.add_scalar('acc/train', dict['acc'], epoch)
-  writer.add_scalar('acc/val', dict['val_acc'], epoch)
-  writer.add_scalar('lr', dict['lr'], epoch)
-  
-def add_record(train_progress, writer, **dict):
-  for k, w in dict.items(): 
-    if k not in train_progress:
-      train_progress.update({k : []})
-    train_progress[k].append(w)
-
-  add_tensorboard_record(writer, **dict)
+    layout = {
+      "Performance": {
+          "loss": ["Multiline", ["loss/train", "loss/val"]],
+          "acc": ["Multiline", ["acc/train", "acc/val"]],
+      },
+    }  
+    
+    self.writer.add_custom_scalars(layout)
+    
+    
+  def __add_tensorboard_record__(self, epoch: int, **dict):
+    self.writer.add_scalar('loss/train', dict['val_loss'], epoch)
+    self.writer.add_scalar('loss/val', dict['val_loss'], epoch)
+    self.writer.add_scalar('acc/train', dict['acc'], epoch)
+    self.writer.add_scalar('acc/val', dict['val_acc'], epoch)
+    self.writer.add_scalar('lr', dict['lr'], epoch)
+    
+    
+  def add(self, train_progress: Dict, **dict):
+    self.__add_tensorboard_record__(**dict)
+    
+    for k, w in dict.items(): 
+      if k not in train_progress:
+        train_progress.update({k : []})
+      train_progress[k].append(w)
 
 class DecayingCosineAnnealingLR(CosineAnnealingLR):
   def get_lr(self) -> float:
