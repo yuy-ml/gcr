@@ -26,43 +26,51 @@ def plot_csv(filepath: str, **kwargs) -> None:
   plt.show()
   
 def save_state(model: Module, opt: Optimizer, epoch: int,
-               losses: Dict, best_loss: int, best_acc: float, path: str) -> None:
+               losses: Dict, loss: float, acc: float, best_loss: float,
+               best_acc: float, path: str) -> None:
   
   os.makedirs(path, exist_ok=True)
   pd.DataFrame(losses).to_csv(f'{path}/train_progress.csv', index=False)
   
-  state = model.state_dict()
-  state['epoch'] = epoch
-  state['best_loss'] = best_loss
-  state['best_acc'] = best_acc
-  
-  torch.save(opt.state_dict(), f'{path}/optimizer.pt')
-  torch.save(state, f'{path}/model.pt')
+  torch.save({
+    'epoch': epoch,
+    'model_state_dict': model.state_dict(),
+    'optimizer_state_dict': opt.state_dict(),
+    'loss': loss,
+    'acc' : acc,
+    'best_loss' : best_loss,
+    'best_acc' : best_acc
+    }, f'{path}/checkpoint.pt')
   
 def restore_state(nn: Module, opt: Optimizer, path: str) -> Tuple[Module,
                                                                   Optimizer,
                                                                   int,
-                                                                  int,
+                                                                  float,
+                                                                  float,
+                                                                  float,
+                                                                  float,
                                                                   Dict[str, list]]:
   
   try:
-    model_checkpoint = torch.load(f"{path}/model.pt")
-    opt_checkpoint = torch.load(f"{path}/optimizer.pt")
+    checkpoint = torch.load(f'{path}/checkpoint.pt')
     
-    opt.load_state_dict(opt_checkpoint)
-    nn.load_state_dict(model_checkpoint, strict=False)
+    opt.load_state_dict(checkpoint['optimizer_state_dict'])
+    nn.load_state_dict(checkpoint['model_state_dict'], strict=False)
     
     train_process = pd.read_csv(f'{path}/train_progress.csv').to_dict('list')
-    epoch = model_checkpoint['epoch']
-    best_loss = model_checkpoint['best_loss']
-    best_acc = model_checkpoint['best_acc']
-    print(f"Successfully loaded weights: {best_loss} loss, {best_acc} acc")
+    epoch = checkpoint['epoch']
+    loss = checkpoint['loss']
+    acc = checkpoint['acc']
+    best_loss = checkpoint['best_loss']
+    best_acc = checkpoint['best_acc']
     
-    return nn, opt, epoch, best_loss, best_acc, train_process
+    print(f"Successfully loaded checkpoint: {best_loss} loss, {best_acc} acc")
+    
+    return nn, opt, epoch, loss, acc, best_loss, best_acc, train_process
   
   except FileNotFoundError as e:
     print(f"Couldn't load checkpoint: {e}")
-    return nn, opt, -1, 1e18, 0, {}
+    return nn, opt, -1, 1e18, 0, 1e18, 0, {}
   
 class LogWriter:
   def __init__(self, run: str) -> None:
