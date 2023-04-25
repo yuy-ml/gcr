@@ -72,7 +72,7 @@ def restore_state(nn: Module, opt: Optimizer, path: str) -> Tuple[Module,
     print(f"Couldn't load checkpoint: {e}")
     return nn, opt, -1, 1e18, 0, 1e18, 0, {}
   
-class Logger:
+class TrainLogger:
   def __init__(self, run: str) -> None:
     self.writer = SummaryWriter(run)
   
@@ -101,12 +101,3 @@ class Logger:
       if k not in train_progress:
         train_progress.update({k : []})
       train_progress[k].append(w)
-
-class DecayingCosineAnnealingLR(CosineAnnealingLR):
-  def get_lr(self) -> float:
-    lr = super().get_lr()
-    decay_factor = np.exp([-0.05 * (self.last_epoch // (2 * self.T_max))])[0]
-    lr[0] *= decay_factor
-    return lr
-  
-  

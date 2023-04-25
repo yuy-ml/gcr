@@ -46,9 +46,10 @@ def retrieve_image(audio, n_fft, sr, win_length, hop_length, fmin, fmax):
   plt.close()
   
   return rgba_arr / 255
-
+  
+  
 @dataclass
-class AudioDataset(Dataset):
+class MelImageDataset(Dataset):
   data: pd.DataFrame
   sr: int = 22050
   n_fft: int = 2048
@@ -85,27 +86,8 @@ class AudioDataset(Dataset):
                        shape=(self.data.shape[0], 8),
                        dtype=np.float32,
                        mode='r+')
-  
-  def __post_init__(self):
     
-    self.cache_path = f"{self.dtemp}/genre-research_{self.suffix}"
-    self.progress_path = f'{self.cache_path}/.progress'
-    if path.exists(self.cache_path):
-      mode = 'r+'
-    else:
-      os.makedirs(self.cache_path)
-      mode = 'w+'
-  
-    self.x = np.memmap(path.join(self.cache_path, 'x.dat'),
-                       shape=(self.data.shape[0], 480, 640, 3),
-                       dtype=np.float32,
-                       mode=mode)
-    self.y = np.memmap(path.join(self.cache_path, 'y.dat'),
-                       shape=(self.data.shape[0], 8),
-                       dtype=np.float32,
-                       mode=mode)
-    
-    init_state = self.__restore_state__()
+  def __process__(self, init_state):
     i = init_state
     for index, row in tqdm(islice(self.data.iterrows(), init_state, None, 1),
                            total=len(self.data), initial=init_state):
@@ -129,15 +111,43 @@ class AudioDataset(Dataset):
       self.x[i] = image
       self.y[i] = label2vec(8)(int(row['track_genres']))
       i += 1
+      
+  def __shuffle__(self):
+    print("Shuffling after first initialization")
+    p = np.random.permutation(self.data.shape[0])
+    self.x[:], self.y[:] = self.x[p], self.y[p]
+    self.x.flush()
+    self.y.flush()
+    self.unload()
     
+  def __init_cache__(self):
+    self.cache_path = f"{self.dtemp}/genre-research_{self.suffix}"
+    self.progress_path = f'{self.cache_path}/.progress'
+    if path.exists(self.cache_path):
+      mode = 'r+'
+    else:
+      os.makedirs(self.cache_path)
+      mode = 'w+'
+  
+    self.x = np.memmap(path.join(self.cache_path, 'x.dat'),
+                       shape=(self.data.shape[0], 480, 640, 3),
+                       dtype=np.float32,
+                       mode=mode)
+    self.y = np.memmap(path.join(self.cache_path, 'y.dat'),
+                       shape=(self.data.shape[0], 8),
+                       dtype=np.float32,
+                       mode=mode)
+  
+  def __post_init__(self):
+    
+    self.__init_cache__()
+    init_state = self.__restore_state__()
+    self.__process__(init_state)
     self.__save_state__(str(len(self.data)))
-    if init_state != self.data.shape[0] and i == self.data.shape[0]:
-      print("Shuffling after first initialization")
-      p = np.random.permutation(self.data.shape[0])
-      self.x[:], self.y[:] = self.x[p], self.y[p]
-      self.x.flush()
-      self.y.flush()
-      self.unload()
+    
+    
+    if init_state != self.data.shape[0]:
+      self.__shuffle__()
     
   def __len__(self):
     return self.data.shape[0]
