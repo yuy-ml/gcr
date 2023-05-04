@@ -2,6 +2,7 @@ import os.path as path
 import os
 import glob
 import pandas as pd
+import matplotlib
 import matplotlib.pyplot as plt
 import librosa
 import numpy as np
@@ -13,6 +14,8 @@ from dataclasses import dataclass
 from torch.utils.data import Dataset
 
 from utils import label2vec
+
+matplotlib.use('Agg')
 
 def get_audio_by_id(base_folder: str, id: int, sr=22050):
   id = f'{id:06}'
@@ -42,8 +45,10 @@ def retrieve_image(audio, n_fft, sr, win_length, hop_length, fmin, fmax):
   fig.canvas.draw()
   rgba_buf = fig.canvas.buffer_rgba()
   (w,h) = fig.canvas.get_width_height()
+  plt.clf()
+  plt.close('all')
   rgba_arr = np.frombuffer(rgba_buf, dtype=np.uint8).reshape((h, w, 4))[:, :, :3]
-  plt.close()
+
   
   return rgba_arr / 255
   
